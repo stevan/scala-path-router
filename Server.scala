@@ -11,29 +11,42 @@ import org.jboss.netty.util.CharsetUtil.UTF_8
 
 import java.net.InetSocketAddress
 
-// deconstruct the uri and make it
-// suitable for pattern matching
-// and destructuring bind
+// fiddle with the route uri and
+// make it suitable for pattern
+// matching and destructuring bind
+// --
+// this code shamelessly stolen from:
+// http://hootenannylas.blogspot.com/2013/02/pattern-matching-with-string.html
 object Route {
-    def unapplySeq (r: (HttpMethod, String)): Some[(HttpMethod, Seq[String])] = Some(r._1 -> r._2.split("/").tail)
+    implicit class RouteContext (val sc : StringContext) {
+        object rte {
+            def apply (args : Any*) : String = sc.s (args : _*)
+
+            def unapplySeq (s : String) : Option[Seq[String]] = {
+                val regexp = sc.parts.mkString("(.+)").r
+                regexp.unapplySeq(s)
+            }
+        }
+    }
 }
 
 // this basically just wraps the
 // PartialFunction and adds a
 // few extra methods
 class Router (
-        private val matcher : PartialFunction[(HttpMethod, String), Target]
+        private val matcher : PartialFunction[String, Target]
     ) {
+
     // this can be used to check if
-    // a given (method, uri) pattern
+    // a given uri pattern
     // is valid for this router
-    def checkUri (r: (HttpMethod, String)): Option[String] = if (isDefinedAt(r)) Some(r._2) else None
+    def checkUri (r: String): Option[String] = if (isDefinedAt(r)) Some(r) else None
 
     // this will perform the match and
     // return an Option[Target]
-    def matchUri (r: (HttpMethod, String)): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
+    def matchUri (r: String): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
 
-    def isDefinedAt (r: (HttpMethod, String)) = matcher.isDefinedAt(r)
+    def isDefinedAt (r: String) = matcher.isDefinedAt(r)
     def orElse (x: Router) = new Router ({ matcher orElse x.matcher })
 }
 
@@ -79,15 +92,18 @@ class HelloFromFooBarX (r: HttpRequest, private val a: String) extends Target(r)
 object HTTPServer extends App {
 
     val service = new Service[ HttpRequest, HttpResponse ] {
+
+        import Route.RouteContext
+
         def apply ( req : HttpRequest ) : Future[ HttpResponse ] = {
 
             // creation of routers is
             // very straight forward
             val fooRouter = new Router({
-                case Route(GET, "foo")                  => new HelloFromFoo(req)
-                case Route(GET, "foo", "bar", x)        => new HelloFromFooBarX (req, x)
-                case Route(GET, "foo", "bar")           => new Target (req)  { def body = "Hello From foo/bar\n" }
-                case Route(GET, "foo", "bar", x, "baz") => new Target (req, x) {
+                case rte"/foo"            => new HelloFromFoo(req)
+                case rte"/foo/bar/$x"     => new HelloFromFooBarX (req, x)
+                case rte"/foo/bar"        => new Target (req) { def body = "Hello From foo/bar\n" }
+                case rte"/foo/bar/$x/baz" => new Target (req, x) {
                     def body = "Hello From foo/bar/" + binding(0)  + "/baz\n"
                 }
             })
@@ -102,17 +118,17 @@ object HTTPServer extends App {
             })
 
             // at any time you can check
-            // to see if a method, uri
-            // is valid for that particular
-            // router
-            println(fooRouter.checkUri(GET -> "/foo/bar/100"))
+            // to see if a uri is valid
+            // for that particular router
+            println(fooRouter.checkUri("/foo/bar/100"))
 
             // routers can easily be chained
-            val allRoutes = fooRouter // orElse catchAllRouter
+            val allRoutes = fooRouter orElse catchAllRouter
 
             // matching is
-            allRoutes.matchUri( req.getMethod() -> req.getUri() ).getOrElse(
-                throw new Exception("Whoops")
+            val uri = req.getUri()
+            allRoutes.matchUri( uri ).getOrElse(
+                throw new Exception(s"Unknown Error: could not match $uri")
             ).render
         }
     }
