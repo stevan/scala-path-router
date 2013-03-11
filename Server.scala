@@ -11,6 +11,8 @@ import org.jboss.netty.util.CharsetUtil.UTF_8
 
 import java.net.InetSocketAddress
 
+import scala.util.Try
+
 object PathRouter {
 
     // fiddle with the route method, uri
@@ -45,7 +47,7 @@ object PathRouter {
 
         // this will perform the match and
         // return an Option[Target]
-        def matchUri (r: (HttpMethod, String)): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
+        def matchUri (r: (HttpMethod, String)): Try[Target] = Try(matcher(r))
 
         def isDefinedAt (r: (HttpMethod, String)) = matcher.isDefinedAt(r)
         def orElse (x: Router) = {
@@ -137,9 +139,7 @@ object HTTPServer extends App {
 
             // matching is
             val uri = req.getUri()
-            allRoutes.matchUri( req.getMethod() -> uri ).getOrElse(
-                throw new Exception(s"Unknown Error: could not match $uri")
-            ).render
+            allRoutes.matchUri( req.getMethod() -> uri ).get.render
         }
     }
 
