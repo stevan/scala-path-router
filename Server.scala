@@ -11,15 +11,19 @@ import org.jboss.netty.util.CharsetUtil.UTF_8
 
 import java.net.InetSocketAddress
 
-// fiddle with the route uri and
-// make it suitable for pattern
-// matching and destructuring bind
-// --
-// this code shamelessly stolen from:
-// http://hootenannylas.blogspot.com/2013/02/pattern-matching-with-string.html
-object Route {
+object PathRouter {
+
+    // fiddle with the route method, uri
+    // and make it suitable for pattern
+    // matching and destructuring bind.
+    object Route {
+        def unapply (r: (HttpMethod, String)): Some[(HttpMethod, String)] = Some(r)
+    }
+
+    // this code shamelessly stolen from:
+    // http://hootenannylas.blogspot.com/2013/02/pattern-matching-with-string.html
     implicit class RouteContext (val sc : StringContext) {
-        object rte {
+        object url {
             def unapplySeq (s : String) : Option[Seq[String]] = {
                 val regexp = (sc.parts.mkString("([^/]+)") + "[/]?$").r
                 regexp.unapplySeq(s)
@@ -27,55 +31,58 @@ object Route {
         }
     }
 
-    def unapply (r: (HttpMethod, String)): Some[(HttpMethod, String)] = Some(r)
-}
+    // this basically just wraps the
+    // PartialFunction and adds a
+    // few extra methods
+    trait Router {
 
-// this basically just wraps the
-// PartialFunction and adds a
-// few extra methods
-class Router (
-        private val matcher : PartialFunction[(HttpMethod, String), Target]
-    ) {
+        def matcher : PartialFunction[(HttpMethod, String), Target]
 
-    // this can be used to check if
-    // a given uri pattern
-    // is valid for this router
-    def checkUri (r: (HttpMethod, String)): Option[String] = if (isDefinedAt(r)) Some(r._2) else None
+        // this can be used to check if
+        // a given uri pattern
+        // is valid for this router
+        def checkUri (r: (HttpMethod, String)): Option[String] = if (isDefinedAt(r)) Some(r._2) else None
 
-    // this will perform the match and
-    // return an Option[Target]
-    def matchUri (r: (HttpMethod, String)): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
+        // this will perform the match and
+        // return an Option[Target]
+        def matchUri (r: (HttpMethod, String)): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
 
-    def isDefinedAt (r: (HttpMethod, String)) = matcher.isDefinedAt(r)
-    def orElse (x: Router) = new Router ({ matcher orElse x.matcher })
-}
+        def isDefinedAt (r: (HttpMethod, String)) = matcher.isDefinedAt(r)
+        def orElse (x: Router) = {
+            val m = matcher
+            new Router { def matcher = m orElse x.matcher }
+        }
+    }
 
-// this is the basis for the Targets
-// it is pretty flexible, but on its
-// own is not terrible pretty, the
-// main priority is to capture the
-// request context and any of the
-// uri bindings
-abstract class Target (r: HttpRequest, b: AnyRef*) {
-    private val req      : HttpRequest = r
-    private val bindings : Seq[AnyRef] = b
+    // this is the basis for the Targets
+    // it is pretty flexible, but on its
+    // own is not terrible pretty, the
+    // main priority is to capture the
+    // request context and any of the
+    // uri bindings
+    abstract class Target (r: HttpRequest, b: AnyRef*) {
+        private val req      : HttpRequest = r
+        private val bindings : Seq[AnyRef] = b
 
-    def binding (i: Int) = bindings(i)
+        def binding (i: Int) = bindings(i)
 
-    // the below methods combine to create
-    // the body of the response, which is
-    // created by the render method
+        // the below methods combine to create
+        // the body of the response, which is
+        // created by the render method
 
-    def body: String
+        def body: String
 
-    def status = HttpResponseStatus.OK
-    def render = {
-        val resp = new DefaultHttpResponse(req.getProtocolVersion, status)
-        // set headers here too
-        resp.setContent(copiedBuffer(body, UTF_8))
-        Future.value(resp)
+        def status = HttpResponseStatus.OK
+        def render = {
+            val resp = new DefaultHttpResponse(req.getProtocolVersion, status)
+            // set headers here too
+            resp.setContent(copiedBuffer(body, UTF_8))
+            Future.value(resp)
+        }
     }
 }
+
+import PathRouter._
 
 // Target should be easily overridden
 // to make simple custom classes
@@ -89,38 +96,41 @@ class HelloFromFooBarX (r: HttpRequest, private val a: String) extends Target(r)
     def body = "Hello From foo/bar/" + a + "\n"
 }
 
+
 object HTTPServer extends App {
 
     val service = new Service[ HttpRequest, HttpResponse ] {
-
-        import Route.RouteContext
 
         def apply ( req : HttpRequest ) : Future[ HttpResponse ] = {
 
             // creation of routers is
             // very straight forward
-            val fooRouter = new Router({
-                case Route(GET, rte"/foo")            => new HelloFromFoo(req)
-                case Route(GET, rte"/foo/bar/$x")     => new HelloFromFooBarX (req, x)
-                case Route(GET, rte"/foo/bar")        => new Target (req) { def body = "Hello From foo/bar\n" }
-                case Route(GET, rte"/foo/bar/$x/baz") => new Target (req, x) {
-                    def body = ">>Hello From foo/bar/" + binding(0)  + "/baz\n"
+            val fooRouter = new Router {
+                def matcher = {
+                    case Route(GET, url"/foo")            => new HelloFromFoo(req)
+                    case Route(GET, url"/foo/bar/$x")     => new HelloFromFooBarX (req, x)
+                    case Route(GET, url"/foo/bar")        => new Target (req) { def body = "Hello From foo/bar\n" }
+                    case Route(GET, url"/foo/bar/$x/baz") => new Target (req, x) {
+                        def body = ">>Hello From foo/bar/" + binding(0)  + "/baz\n"
+                    }
                 }
-            })
+            }
 
             // having a catch all router
             // is recommended
-            val catchAllRouter = new Router ({
-                case _ => new Target (req) {
-                    override def status = HttpResponseStatus.NOT_FOUND
-                             def body   = "404 - Not Found\n"
+            val catchAllRouter = new Router {
+                def matcher = {
+                    case _ => new Target (req) {
+                        override def status = HttpResponseStatus.NOT_FOUND
+                                 def body   = "404 - Not Found\n"
+                    }
                 }
-            })
+            }
 
             // at any time you can check
             // to see if a uri is valid
             // for that particular router
-            println(fooRouter.checkUri(GET -> "/foo/bar/100"))
+            println(fooRouter.checkUri(GET, "/foo/bar/100"))
 
             // routers can easily be chained
             val allRoutes = fooRouter orElse catchAllRouter
