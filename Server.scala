@@ -26,25 +26,27 @@ object Route {
             }
         }
     }
+
+    def unapply (r: (HttpMethod, String)): Some[(HttpMethod, String)] = Some(r)
 }
 
 // this basically just wraps the
 // PartialFunction and adds a
 // few extra methods
 class Router (
-        private val matcher : PartialFunction[String, Target]
+        private val matcher : PartialFunction[(HttpMethod, String), Target]
     ) {
 
     // this can be used to check if
     // a given uri pattern
     // is valid for this router
-    def checkUri (r: String): Option[String] = if (isDefinedAt(r)) Some(r) else None
+    def checkUri (r: (HttpMethod, String)): Option[String] = if (isDefinedAt(r)) Some(r._2) else None
 
     // this will perform the match and
     // return an Option[Target]
-    def matchUri (r: String): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
+    def matchUri (r: (HttpMethod, String)): Option[Target] = if (isDefinedAt(r)) Some(matcher(r)) else None
 
-    def isDefinedAt (r: String) = matcher.isDefinedAt(r)
+    def isDefinedAt (r: (HttpMethod, String)) = matcher.isDefinedAt(r)
     def orElse (x: Router) = new Router ({ matcher orElse x.matcher })
 }
 
@@ -98,11 +100,11 @@ object HTTPServer extends App {
             // creation of routers is
             // very straight forward
             val fooRouter = new Router({
-                case rte"/foo"            => new HelloFromFoo(req)
-                case rte"/foo/bar/$x"     => new HelloFromFooBarX (req, x)
-                case rte"/foo/bar"        => new Target (req) { def body = "Hello From foo/bar\n" }
-                case rte"/foo/bar/$x/baz" => new Target (req, x) {
-                    def body = "Hello From foo/bar/" + binding(0)  + "/baz\n"
+                case Route(GET, rte"/foo")            => new HelloFromFoo(req)
+                case Route(GET, rte"/foo/bar/$x")     => new HelloFromFooBarX (req, x)
+                case Route(GET, rte"/foo/bar")        => new Target (req) { def body = "Hello From foo/bar\n" }
+                case Route(GET, rte"/foo/bar/$x/baz") => new Target (req, x) {
+                    def body = ">>Hello From foo/bar/" + binding(0)  + "/baz\n"
                 }
             })
 
@@ -118,14 +120,14 @@ object HTTPServer extends App {
             // at any time you can check
             // to see if a uri is valid
             // for that particular router
-            println(fooRouter.checkUri("/foo/bar/100"))
+            println(fooRouter.checkUri(GET -> "/foo/bar/100"))
 
             // routers can easily be chained
             val allRoutes = fooRouter orElse catchAllRouter
 
             // matching is
             val uri = req.getUri()
-            allRoutes.matchUri( uri ).getOrElse(
+            allRoutes.matchUri( req.getMethod() -> uri ).getOrElse(
                 throw new Exception(s"Unknown Error: could not match $uri")
             ).render
         }
