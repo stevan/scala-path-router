@@ -137,9 +137,8 @@ object HTTPServer extends App {
             // routers can easily be chained
             val allRoutes = fooRouter orElse catchAllRouter
 
-            // matching is
-            val uri = req.getUri()
-            allRoutes.matchUri( req.getMethod() -> uri ).get.render
+            // matching
+            allRoutes.matchUri( req.getMethod() -> req.getUri() ).get.render
         }
     }
 
