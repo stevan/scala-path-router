@@ -34,7 +34,7 @@ object PathRouter {
     // this basically just wraps the
     // PartialFunction and adds a
     // few extra methods
-    trait Router {
+    abstract class Router {
 
         def matcher : PartialFunction[Request, Target]
 
@@ -54,6 +54,9 @@ object PathRouter {
         }
     }
 
+    def Router (f: PartialFunction[Request, Target]) =
+        new Router { def matcher = f }
+
     // this is the basis for the Targets
     // it is pretty flexible, but on its
     // own is not terrible pretty, the
@@ -66,4 +69,7 @@ object PathRouter {
         def binding (i: Int) = bindings(i)
         def result: AnyRef
     }
+
+    def Target (f: => AnyRef) =
+        new Target { def result = f }
 }
