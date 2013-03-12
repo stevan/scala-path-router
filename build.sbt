@@ -6,6 +6,8 @@ scalaVersion := "2.10.0"
 
 scalacOptions ++= Seq("-deprecation", "-unchecked")
 
-libraryDependencies += "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test"
+libraryDependencies += "com.iinteractive" % "scala-test-more_2.10" % "0.01" % "test"
+
+testFrameworks += new TestFramework("com.iinteractive.test.sbt.Framework")
 
 libraryDependencies += "io.netty" % "netty" % "3.5.5.Final"
