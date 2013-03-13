@@ -21,25 +21,19 @@ class PathRouterTestSuite extends TestMore {
 
     // creation of routers is
     // very straight forward
-    val fooRouter = new Router {
-        def matcher = {
-            case Route(GET, url"/foo")            => new HelloFromFoo()
-            case Route(GET, url"/foo/bar/$x")     => new HelloFromFooBarX (x)
-            case Route(GET, url"/foo/bar")        => new Target () { def result = "Hello From foo/bar\n" }
-            case Route(GET, url"/foo/bar/$x/baz") => new Target (x) {
-                def result = ">>Hello From foo/bar/" + binding(0)  + "/baz\n"
-            }
+    val fooRouter = Router {
+        case Route(GET, url"/foo")            => new HelloFromFoo()
+        case Route(GET, url"/foo/bar/$x")     => new HelloFromFooBarX (x)
+        case Route(GET, url"/foo/bar")        => Target { "Hello From foo/bar\n" }
+        case Route(GET, url"/foo/bar/$x/baz") => new Target (x) {
+            def result = ">>Hello From foo/bar/" + binding(0)  + "/baz\n"
         }
     }
 
     // having a catch all router
     // is recommended
-    val catchAllRouter = new Router {
-        def matcher = {
-            case _ => new Target () {
-                def result   = "404 - Not Found\n"
-            }
-        }
+    val catchAllRouter = Router {
+        case _ => Target { "404 - Not Found\n" }
     }
 
     // at any time you can check
