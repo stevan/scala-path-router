@@ -7,16 +7,14 @@ import PathRouter.Method._
 
 class PathRouterTestSuite001 extends TestMore {
 
-    val fooRouter = new Router {
-        def matcher = {
-            case Route(GET, url"/foo")            => new Target () { def result = "/foo" }
-            case Route(GET, url"/foo/bar")        => new Target () { def result = "/foo/bar" }
-            case Route(GET, url"/foo/bar/$x")     => new Target (x) {
-                def result = "/foo/bar/" + binding(0)
-            }
-            case Route(GET, url"/foo/bar/$x/baz") => new Target (x) {
-                def result = "/foo/bar/" + binding(0)  + "/baz"
-            }
+    val fooRouter = Router {
+        case Route(GET, url"/foo")            => Target { "/foo" }
+        case Route(GET, url"/foo/bar")        => Target { "/foo/bar" }
+        case Route(GET, url"/foo/bar/$x")     => new Target (x) {
+            def result = "/foo/bar/" + binding(0)
+        }
+        case Route(GET, url"/foo/bar/$x/baz") => new Target (x) {
+            def result = "/foo/bar/" + binding(0)  + "/baz"
         }
     }
 

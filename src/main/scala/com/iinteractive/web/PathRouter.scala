@@ -25,6 +25,8 @@ object PathRouter {
     implicit class RouteContext (val sc : StringContext) {
         object url {
             def unapplySeq (s : String) : Option[Seq[String]] = {
+                //println(sc.parts)
+                //println(s)
                 val regexp = (sc.parts.mkString("([^/]+)") + "[/]?$").r
                 regexp.unapplySeq(s)
             }
